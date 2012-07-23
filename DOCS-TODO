@@ -1,0 +1,60 @@
+
+NEW Transformation
+	Transformation(a, b, c, d)
+
+	transform(point, scale)
+	untransform(point, scale)
+
+NEW DomEvent
+	addListener(obj, type, fn, context)
+	on
+	removeListener(obj, type, fn)
+	off
+	stopPropagation(e)
+	disableClickPropagation(el)
+	preventDefault(e)
+	stop(e)
+	getMousePosition(e, container)
+	getWheelDelta(e)
+
+NEW Transition
+	Transition(el, options)
+
+	run(props)
+
+	options
+		fps: 50
+		easing: 'ease',
+		duration: 0.5
+		fakeStepInterval: 100
+
+	events
+		start
+		step
+		end
+
+NEW Draggable
+	Draggable(element, dragStartTarget)
+
+	enable()
+	disable()
+
+	events
+		dragstart
+		predrag
+		drag
+		dragend
+
+NEW IProjection
+	project(latlng)
+	unproject(point)
+
+NEW ICRS
+	latLngToPoint(latlng, zoom)
+	pointToLatLng(point, zoom)
+	project(latlng)
+	scale(zoom)
+
+ILayer options.minZoom and options.maxZoom?
+Map.addHandler?
+

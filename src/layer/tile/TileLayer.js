@@ -60,8 +60,10 @@ L.TileLayer = L.Class.extend({
 		this._createTileProto();
 
 		// set up events
-		map.on('viewreset', this._resetCallback, this);
-		map.on('moveend', this._update, this);
+		map.on({
+			'viewreset': this._resetCallback,
+			'moveend': this._update
+		}, this);
 
 		if (!this.options.updateWhenIdle) {
 			this._limitedUpdate = L.Util.limitExecByInterval(this._update, 150, this);
@@ -72,11 +74,18 @@ L.TileLayer = L.Class.extend({
 		this._update();
 	},
 
+	addTo: function (map) {
+		map.addLayer(this);
+		return this;
+	},
+
 	onRemove: function (map) {
 		map._panes.tilePane.removeChild(this._container);
 
-		map.off('viewreset', this._resetCallback, this);
-		map.off('moveend', this._update, this);
+		map.off({
+			'viewreset': this._resetCallback,
+			'moveend': this._update
+		}, this);
 
 		if (!this.options.updateWhenIdle) {
 			map.off('move', this._limitedUpdate, this);
@@ -84,6 +93,19 @@ L.TileLayer = L.Class.extend({
 
 		this._container = null;
 		this._map = null;
+	},
+
+	bringToFront: function () {
+		if (this._container) {
+			this._map._panes.tilePane.appendChild(this._container);
+		}
+	},
+
+	bringToBack: function () {
+		var pane = this._map._panes.tilePane;
+		if (this._container) {
+			pane.insertBefore(this._container, pane.firstChild);
+		}
 	},
 
 	getAttribution: function () {
@@ -96,6 +118,28 @@ L.TileLayer = L.Class.extend({
 		if (this._map) {
 			this._updateOpacity();
 		}
+	},
+
+	setUrl: function (url, noRedraw) {
+		this._url = url;
+
+		if (!noRedraw) {
+			this.redraw();
+		}
+
+		return this;
+	},
+
+	redraw: function () {
+		if (this._map) {
+			this._reset(true);
+			this._update();
+		}
+		return this;
+	},
+
+	_updateOpacity: function () {
+		L.DomUtil.setOpacity(this._container, this.options.opacity);
 
 		// stupid webkit hack to force redrawing of tiles
 		var i,
@@ -108,10 +152,6 @@ L.TileLayer = L.Class.extend({
 				}
 			}
 		}
-	},
-
-	_updateOpacity: function () {
-		L.DomUtil.setOpacity(this._container, this.options.opacity);
 	},
 
 	_initContainer: function () {
@@ -199,6 +239,8 @@ L.TileLayer = L.Class.extend({
 			}
 		}
 
+		if (queue.length === 0) { return; }
+
 		// load tiles in order of their distance to center
 		queue.sort(function (a, b) {
 			return a.distanceTo(center) - b.distanceTo(center);
@@ -217,7 +259,7 @@ L.TileLayer = L.Class.extend({
 	},
 
 	_removeOtherTiles: function (bounds) {
-		var kArr, x, y, key, tile;
+		var kArr, x, y, key;
 
 		for (key in this._tiles) {
 			if (this._tiles.hasOwnProperty(key)) {
@@ -238,11 +280,11 @@ L.TileLayer = L.Class.extend({
 
 		this.fire("tileunload", {tile: tile, url: tile.src});
 
-		if (tile.parentNode === this._container) {
-			this._container.removeChild(tile);
-		}
 		if (this.options.reuseTiles) {
+			L.DomUtil.removeClass(tile, 'leaflet-tile-loaded');
 			this._unusedTiles.push(tile);
+		} else if (tile.parentNode === this._container) {
+			this._container.removeChild(tile);
 		}
 
 		tile.src = L.Util.emptyImageUrl;
@@ -273,7 +315,11 @@ L.TileLayer = L.Class.extend({
 
 		// get unused tile - or create a new tile
 		var tile = this._getTile();
-		L.DomUtil.setPosition(tile, tilePos);
+
+		// Chrome 20 layouts much faster with top/left (Verify with timeline, frames), Safari 5.1.7, iOS 5.1.1,
+		// android browser (4.0) have display issues with top/left and requires transform instead
+		// (other browsers don't currently care) - see debug/hacks/jitter.html for an example
+		L.DomUtil.setPosition(tile, tilePos, L.Browser.chrome);
 
 		this._tiles[key] = tile;
 
@@ -283,7 +329,9 @@ L.TileLayer = L.Class.extend({
 
 		this._loadTile(tile, tilePoint, zoom);
 
-		container.appendChild(tile);
+		if (tile.parentNode !== this._container) {
+			container.appendChild(tile);
+		}
 	},
 
 	_getOffsetZoom: function (zoom) {
@@ -302,16 +350,17 @@ L.TileLayer = L.Class.extend({
 	// image-specific code (override to implement e.g. Canvas or SVG tile layer)
 
 	getTileUrl: function (tilePoint, zoom) {
-		var subdomains = this.options.subdomains,
-			index = (tilePoint.x + tilePoint.y) % subdomains.length,
-			s = this.options.subdomains[index];
-
 		return L.Util.template(this._url, L.Util.extend({
-			s: s,
+			s: this._getSubdomain(tilePoint),
 			z: this._getOffsetZoom(zoom),
 			x: tilePoint.x,
 			y: tilePoint.y
 		}, this.options));
+	},
+
+	_getSubdomain: function (tilePoint) {
+		var index = (tilePoint.x + tilePoint.y) % this.options.subdomains.length;
+		return this.options.subdomains[index];
 	},
 
 	_createTileProto: function () {
@@ -360,14 +409,17 @@ L.TileLayer = L.Class.extend({
 	_tileOnLoad: function (e) {
 		var layer = this._layer;
 
-		this.className += ' leaflet-tile-loaded';
+		//Only if we are loading an actual image
+		if (this.src !== L.Util.emptyImageUrl) {
+			L.DomUtil.addClass(this, 'leaflet-tile-loaded');
+		
+			layer.fire('tileload', {
+				tile: this,
+				url: this.src
+			});
+		}
 
-		layer.fire('tileload', {
-			tile: this,
-			url: this.src
-		});
-
-        layer._tileLoaded();
+		layer._tileLoaded();
 	},
 
 	_tileOnError: function (e) {
@@ -386,3 +438,7 @@ L.TileLayer = L.Class.extend({
         layer._tileLoaded();
     }
 });
+
+L.tileLayer = function (url, options) {
+	return new L.TileLayer(url, options);
+};

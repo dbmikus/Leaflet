@@ -18,39 +18,30 @@
 	<script type="text/javascript" src="geojson-sample.js"></script>
 	<script type="text/javascript">
 
-		var cloudmadeUrl = 'http://{s}.tile.cloudmade.com/BC9A493B41014CAABB98F0471D759707/997/256/{z}/{x}/{y}.png',
-			cloudmadeAttribution = 'Map data &copy; 2011 OpenStreetMap contributors, Imagery &copy; 2011 CloudMade',
-			cloudmade = new L.TileLayer(cloudmadeUrl, {maxZoom: 18, attribution: cloudmadeAttribution});
+		var map = L.map('map').setView([0.78, 102.37], 7);
 
-		var map = new L.Map('map', {
-			center: new L.LatLng(0.78, 102.37),
-			zoom: 7,
-			layers: [cloudmade]
-		});
+		L.tileLayer('http://{s}.tile.cloudmade.com/{key}/997/256/{z}/{x}/{y}.png', {
+			attribution: 'Map data &copy; 2011 OpenStreetMap contributors, Imagery &copy; 2011 CloudMade',
+			key: 'BC9A493B41014CAABB98F0471D759707'
+		}).addTo(map);
 
-		var geojson = new L.GeoJSON();
+		L.geoJson(geojsonSample, {
+			
+			style: function (feature) {
+				return {color: feature.properties.color};
+			},
 
-		/* points are rendered as markers by default, but you can change this:
+			onEachFeature: function (feature, layer) {
+				var popupText = 'geometry type: ' + feature.geometry.type;
 
-		var geojson = new L.GeoJSON(null, {
-			pointToLayer: function(latlng) { return new L.CircleMarker(latlng); }
-		});
-		*/
+				if (feature.properties.color) {
+					popupText += '<br/>color: ' + feature.properties.color
+				}
 
-		geojson.on('featureparse', function(e) {
-			// you can style features depending on their properties, etc.
-			var popupText = 'geometry type: ' + e.geometryType;
-
-			if (e.layer.setStyle && e.properties && e.properties.color) {
-				e.layer.setStyle({color: e.properties.color});
-				popupText += '<br/>color: ' + e.properties.color;
+				layer.bindPopup(popupText);
 			}
-			e.layer.bindPopup(popupText);
-		});
-
-		geojson.addGeoJSON(geojsonSample);
-
-		map.addLayer(geojson);
+		}).addTo(map);
+		
 	</script>
 </body>
 </html>
