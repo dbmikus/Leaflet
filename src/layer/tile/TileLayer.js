@@ -158,6 +158,11 @@ L.TileLayer = L.Class.extend({
 		var tilePane = this._map._panes.tilePane,
 			first = tilePane.firstChild;
 
+		// RHIZA HACK - wtf is this even supposed to mean? We could get here
+		// with tilePane.empty set to false, and we would never get a
+		// leaflet-layer div in our container
+		tilePane.empty = true;
+
 		if (!this._container || tilePane.empty) {
 			this._container = L.DomUtil.create('div', 'leaflet-layer');
 
@@ -414,7 +419,7 @@ L.TileLayer = L.Class.extend({
 		//Only if we are loading an actual image
 		if (this.src !== L.Util.emptyImageUrl) {
 			L.DomUtil.addClass(this, 'leaflet-tile-loaded');
-		
+
 			layer.fire('tileload', {
 				tile: this,
 				url: this.src
