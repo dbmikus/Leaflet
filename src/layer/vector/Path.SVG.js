@@ -39,8 +39,6 @@ L.Path = L.Path.extend({
 
 		this._path = this._createElement('path');
 		this._container.appendChild(this._path);
-
-		this._map._pathRoot.appendChild(this._container);
 	},
 
 	_initStyle: function () {
@@ -59,6 +57,11 @@ L.Path = L.Path.extend({
 			this._path.setAttribute('stroke', this.options.color);
 			this._path.setAttribute('stroke-opacity', this.options.opacity);
 			this._path.setAttribute('stroke-width', this.options.weight);
+			if (this.options.dashArray) {
+				this._path.setAttribute('stroke-dasharray', this.options.dashArray);
+			} else {
+				this._path.removeAttribute('stroke-dasharray');
+			}
 		} else {
 			this._path.setAttribute('stroke', 'none');
 		}
@@ -101,13 +104,15 @@ L.Path = L.Path.extend({
 		}
 
 		this._fireMouseEvent(e);
+
+		L.DomEvent.stopPropagation(e);
 	},
 
 	_fireMouseEvent: function (e) {
 		if (!this.hasEventListeners(e.type)) {
 			return;
 		}
-		
+
 		if (e.type === 'contextmenu') {
 			L.DomEvent.preventDefault(e);
 		}
@@ -123,8 +128,6 @@ L.Path = L.Path.extend({
 			containerPoint: containerPoint,
 			originalEvent: e
 		});
-
-		L.DomEvent.stopPropagation(e);
 	}
 });
 

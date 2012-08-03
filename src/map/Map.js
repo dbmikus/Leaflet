@@ -138,7 +138,7 @@ L.Map = L.Class.extend({
 		return this.panBy(new L.Point(dx, dy, true));
 	},
 
-	addLayer: function (layer, insertAtTheBottom) {
+	addLayer: function (layer) {
 		// TODO method is too big, refactor
 
 		var id = L.Util.stamp(layer);
@@ -163,7 +163,7 @@ L.Map = L.Class.extend({
 		}
 
 		var onMapLoad = function () {
-			layer.onAdd(this, insertAtTheBottom);
+			layer.onAdd(this);
 			this.fire('layeradd', {layer: layer});
 		};
 
@@ -200,7 +200,7 @@ L.Map = L.Class.extend({
 		return this._layers.hasOwnProperty(id);
 	},
 
-	invalidateSize: function () {
+	invalidateSize: function (animate) {
 		var oldSize = this.getSize();
 
 		this._sizeChanged = true;
@@ -212,13 +212,16 @@ L.Map = L.Class.extend({
 		if (!this._loaded) { return this; }
 
 		var offset = oldSize.subtract(this.getSize()).divideBy(2, true);
-		this._rawPanBy(offset);
+		if (animate) {
+			this.panBy(offset);
+		} else {
+			this._rawPanBy(offset);
 
-		this.fire('move');
+			this.fire('move');
 
-		clearTimeout(this._sizeTimer);
-		this._sizeTimer = setTimeout(L.Util.bind(this.fire, this, 'moveend'), 200);
-
+			clearTimeout(this._sizeTimer);
+			this._sizeTimer = setTimeout(L.Util.bind(this.fire, this, 'moveend'), 200);
+		}
 		return this;
 	},
 
@@ -521,7 +524,7 @@ L.Map = L.Class.extend({
 			this.fire('zoomend');
 		}
 
-		this.fire('moveend');
+		this.fire('moveend', {hard: !preserveMapOffset});
 
 		if (!this._loaded) {
 			this._loaded = true;
@@ -623,7 +626,7 @@ L.Map = L.Class.extend({
 
 	_latLngToNewLayerPoint: function (latlng, newZoom, newCenter) {
 		var topLeft = this._getNewTopLeftPoint(newCenter, newZoom).add(this._getMapPanePos());
-		return this.project(latlng, newZoom)._subtract(topLeft)._round();
+		return this.project(latlng, newZoom)._subtract(topLeft);
 	},
 
 	_getCenterLayerPoint: function () {

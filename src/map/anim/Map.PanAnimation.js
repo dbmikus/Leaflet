@@ -1,6 +1,6 @@
 
 L.Map.include(!(L.Transition && L.Transition.implemented()) ? {} : {
-	
+
 	setView: function (center, zoom, forceReset) {
 		zoom = this._limitZoom(zoom);
 
@@ -12,7 +12,10 @@ L.Map.include(!(L.Transition && L.Transition.implemented()) ? {} : {
 					this._panByIfClose(center));
 
 			// exit if animated pan or zoom started
-			if (done) { return this; }
+			if (done) {
+				clearTimeout(this._sizeTimer);
+				return this;
+			}
 		}
 
 		// reset the map view
@@ -22,6 +25,8 @@ L.Map.include(!(L.Transition && L.Transition.implemented()) ? {} : {
 	},
 
 	panBy: function (offset, options) {
+		offset = L.point(offset);
+
 		if (!(offset.x || offset.y)) {
 			return this;
 		}
@@ -59,7 +64,7 @@ L.Map.include(!(L.Transition && L.Transition.implemented()) ? {} : {
 
 	_panByIfClose: function (center) {
 		// difference between the new and current centers in pixels
-		var offset = this._getCenterOffset(center);
+		var offset = this._getCenterOffset(center)._floor();
 
 		if (this._offsetIsWithinView(offset)) {
 			this.panBy(offset);

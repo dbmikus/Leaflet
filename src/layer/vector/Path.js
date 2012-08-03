@@ -18,6 +18,7 @@ L.Path = L.Class.extend({
 	options: {
 		stroke: true,
 		color: '#0033ff',
+		dashArray: null,
 		weight: 5,
 		opacity: 0.5,
 
@@ -35,10 +36,17 @@ L.Path = L.Class.extend({
 	onAdd: function (map) {
 		this._map = map;
 
-		this._initElements();
-		this._initEvents();
+		if (!this._container) {
+			this._initElements();
+			this._initEvents();
+		}
+
 		this.projectLatlngs();
 		this._updatePath();
+
+		if (this._container) {
+			this._map._pathRoot.appendChild(this._container);
+		}
 
 		map.on({
 			'viewreset': this.projectLatlngs,
@@ -52,9 +60,15 @@ L.Path = L.Class.extend({
 	},
 
 	onRemove: function (map) {
+		map._pathRoot.removeChild(this._container);
+
 		this._map = null;
 
-		map._pathRoot.removeChild(this._container);
+		if (L.Browser.vml) {
+			this._container = null;
+			this._stroke = null;
+			this._fill = null;
+		}
 
 		map.off({
 			'viewreset': this.projectLatlngs,
