@@ -12,24 +12,26 @@ L.TileLayer = L.Class.extend({
 		subdomains: 'abc',
 		errorTileUrl: '',
 		attribution: '',
+		zoomOffset: 0,
 		opacity: 1,
-		scheme: 'xyz',
+		/* (undefined works too)
+		zIndex: null,
+		tms: false,
 		continuousWorld: false,
 		noWrap: false,
-		zoomOffset: 0,
 		zoomReverse: false,
 		detectRetina: false,
-
+		reuseTiles: false,
+		*/
 		unloadInvisibleTiles: L.Browser.mobile,
-		updateWhenIdle: L.Browser.mobile,
-		reuseTiles: false
+		updateWhenIdle: L.Browser.mobile
 	},
 
 	initialize: function (url, options) {
 		options = L.Util.setOptions(this, options);
 
 		// detecting retina displays, adjusting tileSize and zoom levels
-		if (options.detectRetina && window.devicePixelRatio > 1 && options.maxZoom > 0) {
+		if (options.detectRetina && L.Browser.retina && options.maxZoom > 0) {
 
 			options.tileSize = Math.floor(options.tileSize / 2);
 			options.zoomOffset++;
@@ -49,9 +51,8 @@ L.TileLayer = L.Class.extend({
 		}
 	},
 
-	onAdd: function (map, insertAtTheBottom) {
+	onAdd: function (map) {
 		this._map = map;
-		this._insertAtTheBottom = insertAtTheBottom;
 
 		// create a container div for tiles
 		this._initContainer();
@@ -96,16 +97,25 @@ L.TileLayer = L.Class.extend({
 	},
 
 	bringToFront: function () {
+		var pane = this._map._panes.tilePane;
+
 		if (this._container) {
-			this._map._panes.tilePane.appendChild(this._container);
+			pane.appendChild(this._container);
+			this._setAutoZIndex(pane, Math.max);
 		}
+
+		return this;
 	},
 
 	bringToBack: function () {
 		var pane = this._map._panes.tilePane;
+
 		if (this._container) {
 			pane.insertBefore(this._container, pane.firstChild);
+			this._setAutoZIndex(pane, Math.min);
 		}
+
+		return this;
 	},
 
 	getAttribution: function () {
@@ -118,6 +128,15 @@ L.TileLayer = L.Class.extend({
 		if (this._map) {
 			this._updateOpacity();
 		}
+
+		return this;
+	},
+
+	setZIndex: function (zIndex) {
+		this.options.zIndex = zIndex;
+		this._updateZIndex();
+
+		return this;
 	},
 
 	setUrl: function (url, noRedraw) {
@@ -132,10 +151,37 @@ L.TileLayer = L.Class.extend({
 
 	redraw: function () {
 		if (this._map) {
+			this._map._panes.tilePane.empty = false;
 			this._reset(true);
 			this._update();
 		}
 		return this;
+	},
+
+	_updateZIndex: function () {
+		if (this._container && this.options.zIndex !== undefined) {
+			this._container.style.zIndex = this.options.zIndex;
+		}
+	},
+
+	_setAutoZIndex: function (pane, compare) {
+
+		var layers = pane.getElementsByClassName('leaflet-layer'),
+			edgeZIndex = -compare(Infinity, -Infinity), // -Ifinity for max, Infinity for min
+			zIndex;
+
+		for (var i = 0, len = layers.length; i < len; i++) {
+
+			if (layers[i] !== this._container) {
+				zIndex = parseInt(layers[i].style.zIndex, 10);
+
+				if (!isNaN(zIndex)) {
+					edgeZIndex = compare(edgeZIndex, zIndex);
+				}
+			}
+		}
+
+		this._container.style.zIndex = isFinite(edgeZIndex) ? edgeZIndex + compare(1, -1) : '';
 	},
 
 	_updateOpacity: function () {
@@ -155,8 +201,7 @@ L.TileLayer = L.Class.extend({
 	},
 
 	_initContainer: function () {
-		var tilePane = this._map._panes.tilePane,
-			first = tilePane.firstChild;
+		var tilePane = this._map._panes.tilePane;
 
 		// RHIZA HACK - wtf is this even supposed to mean? We could get here
 		// with tilePane.empty set to false, and we would never get a
@@ -166,11 +211,9 @@ L.TileLayer = L.Class.extend({
 		if (!this._container || tilePane.empty) {
 			this._container = L.DomUtil.create('div', 'leaflet-layer');
 
-			if (this._insertAtTheBottom && first) {
-				tilePane.insertBefore(this._container, first);
-			} else {
-				tilePane.appendChild(this._container);
-			}
+			this._updateZIndex();
+
+			tilePane.appendChild(this._container);
 
 			if (this.options.opacity < 1) {
 				this._updateOpacity();
@@ -193,6 +236,7 @@ L.TileLayer = L.Class.extend({
 		}
 
 		this._tiles = {};
+		this._tilesToLoad = 0;
 
 		if (this.options.reuseTiles) {
 			this._unusedTiles = [];
@@ -235,16 +279,21 @@ L.TileLayer = L.Class.extend({
 		var queue = [],
 			center = bounds.getCenter();
 
-		var j, i;
+		var j, i, point;
+
 		for (j = bounds.min.y; j <= bounds.max.y; j++) {
 			for (i = bounds.min.x; i <= bounds.max.x; i++) {
-				if (!((i + ':' + j) in this._tiles)) {
-					queue.push(new L.Point(i, j));
+				point = new L.Point(i, j);
+
+				if (this._tileShouldBeLoaded(point)) {
+					queue.push(point);
 				}
 			}
 		}
 
-		if (queue.length === 0) { return; }
+		var tilesToLoad = queue.length;
+
+		if (tilesToLoad === 0) { return; }
 
 		// load tiles in order of their distance to center
 		queue.sort(function (a, b) {
@@ -253,14 +302,35 @@ L.TileLayer = L.Class.extend({
 
 		var fragment = document.createDocumentFragment();
 
-		this._tilesToLoad = queue.length;
+		// if its the first batch of tiles to load
+		if (!this._tilesToLoad) {
+			this.fire('loading');
+		}
 
-		var k, len;
-		for (k = 0, len = this._tilesToLoad; k < len; k++) {
-			this._addTile(queue[k], fragment);
+		this._tilesToLoad += tilesToLoad;
+
+		for (i = 0; i < tilesToLoad; i++) {
+			this._addTile(queue[i], fragment);
 		}
 
 		this._container.appendChild(fragment);
+	},
+
+	_tileShouldBeLoaded: function (tilePoint) {
+		if ((tilePoint.x + ':' + tilePoint.y) in this._tiles) {
+			return false; // already loaded
+		}
+
+		if (!this.options.continuousWorld) {
+			var limit = this._getWrapTileNum();
+
+			if (this.options.noWrap && (tilePoint.x < 0 || tilePoint.x >= limit) ||
+				                        tilePoint.y < 0 || tilePoint.y >= limit) {
+				return false; // exceeds world bounds
+			}
+		}
+
+		return true;
 	},
 
 	_removeOtherTiles: function (bounds) {
@@ -300,25 +370,7 @@ L.TileLayer = L.Class.extend({
 	},
 
 	_addTile: function (tilePoint, container) {
-		var tilePos = this._getTilePos(tilePoint),
-			zoom = this._map.getZoom(),
-		    key = tilePoint.x + ':' + tilePoint.y,
-		    limit = Math.pow(2, this._getOffsetZoom(zoom));
-
-		// wrap tile coordinates
-		if (!this.options.continuousWorld) {
-			if (!this.options.noWrap) {
-				tilePoint.x = ((tilePoint.x % limit) + limit) % limit;
-			} else if (tilePoint.x < 0 || tilePoint.x >= limit) {
-				this._tilesToLoad--;
-				return;
-			}
-
-			if (tilePoint.y < 0 || tilePoint.y >= limit) {
-				this._tilesToLoad--;
-				return;
-			}
-		}
+		var tilePos = this._getTilePos(tilePoint);
 
 		// get unused tile - or create a new tile
 		var tile = this._getTile();
@@ -328,22 +380,24 @@ L.TileLayer = L.Class.extend({
 		// (other browsers don't currently care) - see debug/hacks/jitter.html for an example
 		L.DomUtil.setPosition(tile, tilePos, L.Browser.chrome);
 
-		this._tiles[key] = tile;
+		this._tiles[tilePoint.x + ':' + tilePoint.y] = tile;
 
-		if (this.options.scheme === 'tms') {
-			tilePoint.y = limit - tilePoint.y - 1;
-		}
-
-		this._loadTile(tile, tilePoint, zoom);
+		this._loadTile(tile, tilePoint);
 
 		if (tile.parentNode !== this._container) {
 			container.appendChild(tile);
 		}
 	},
 
-	_getOffsetZoom: function (zoom) {
-		var options = this.options;
-		zoom = options.zoomReverse ? options.maxZoom - zoom : zoom;
+	_getZoomForUrl: function () {
+
+		var options = this.options,
+			zoom = this._map.getZoom();
+
+		if (options.zoomReverse) {
+			zoom = options.maxZoom - zoom;
+		}
+
 		return zoom + options.zoomOffset;
 	},
 
@@ -356,13 +410,34 @@ L.TileLayer = L.Class.extend({
 
 	// image-specific code (override to implement e.g. Canvas or SVG tile layer)
 
-	getTileUrl: function (tilePoint, zoom) {
+	getTileUrl: function (tilePoint) {
+		this._adjustTilePoint(tilePoint);
+
 		return L.Util.template(this._url, L.Util.extend({
 			s: this._getSubdomain(tilePoint),
-			z: this._getOffsetZoom(zoom),
+			z: this._getZoomForUrl(),
 			x: tilePoint.x,
 			y: tilePoint.y
 		}, this.options));
+	},
+
+	_getWrapTileNum: function () {
+		// TODO refactor, limit is not valid for non-standard projections
+		return Math.pow(2, this._getZoomForUrl());
+	},
+
+	_adjustTilePoint: function (tilePoint) {
+
+		var limit = this._getWrapTileNum();
+
+		// wrap tile coordinates
+		if (!this.options.continuousWorld && !this.options.noWrap) {
+			tilePoint.x = ((tilePoint.x % limit) + limit) % limit;
+		}
+
+		if (this.options.tms) {
+			tilePoint.y = limit - tilePoint.y - 1;
+		}
 	},
 
 	_getSubdomain: function (tilePoint) {
@@ -398,12 +473,12 @@ L.TileLayer = L.Class.extend({
 		return tile;
 	},
 
-	_loadTile: function (tile, tilePoint, zoom) {
+	_loadTile: function (tile, tilePoint) {
 		tile._layer  = this;
 		tile.onload  = this._tileOnLoad;
 		tile.onerror = this._tileOnError;
 
-		tile.src     = this.getTileUrl(tilePoint, zoom);
+		tile.src     = this.getTileUrl(tilePoint);
 	},
 
     _tileLoaded: function () {

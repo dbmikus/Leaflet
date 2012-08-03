@@ -138,7 +138,7 @@ L.Map = L.Class.extend({
 		return this.panBy(new L.Point(dx, dy, true));
 	},
 
-	addLayer: function (layer, insertAtTheBottom) {
+	addLayer: function (layer) {
 		// TODO method is too big, refactor
 
 		var id = L.Util.stamp(layer);
@@ -163,7 +163,7 @@ L.Map = L.Class.extend({
 		}
 
 		var onMapLoad = function () {
-			layer.onAdd(this, insertAtTheBottom);
+			layer.onAdd(this);
 			this.fire('layeradd', {layer: layer});
 		};
 
@@ -521,7 +521,7 @@ L.Map = L.Class.extend({
 			this.fire('zoomend');
 		}
 
-		this.fire('moveend');
+		this.fire('moveend', {hard: !preserveMapOffset});
 
 		if (!this._loaded) {
 			this._loaded = true;
@@ -623,7 +623,7 @@ L.Map = L.Class.extend({
 
 	_latLngToNewLayerPoint: function (latlng, newZoom, newCenter) {
 		var topLeft = this._getNewTopLeftPoint(newCenter, newZoom).add(this._getMapPanePos());
-		return this.project(latlng, newZoom)._subtract(topLeft)._round();
+		return this.project(latlng, newZoom)._subtract(topLeft);
 	},
 
 	_getCenterLayerPoint: function () {

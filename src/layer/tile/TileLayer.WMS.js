@@ -1,5 +1,5 @@
 L.TileLayer.WMS = L.TileLayer.extend({
-	
+
 	defaultWmsParams: {
 		service: 'WMS',
 		request: 'GetMap',
@@ -16,7 +16,7 @@ L.TileLayer.WMS = L.TileLayer.extend({
 
 		var wmsParams = L.Util.extend({}, this.defaultWmsParams);
 
-		if (options.detectRetina && window.devicePixelRatio > 1) {
+		if (options.detectRetina && L.Browser.retina) {
 			wmsParams.width = wmsParams.height = this.options.tileSize * 2;
 		} else {
 			wmsParams.width = wmsParams.height = this.options.tileSize;
@@ -34,20 +34,20 @@ L.TileLayer.WMS = L.TileLayer.extend({
 		L.Util.setOptions(this, options);
 	},
 
-	onAdd: function (map, insertAtTheBottom) {
+	onAdd: function (map) {
 
 		var projectionKey = parseFloat(this.wmsParams.version) >= 1.3 ? 'crs' : 'srs';
 		this.wmsParams[projectionKey] = map.options.crs.code;
 
-		L.TileLayer.prototype.onAdd.call(this, map, insertAtTheBottom);
+		L.TileLayer.prototype.onAdd.call(this, map);
 	},
 
 	getTileUrl: function (tilePoint, zoom) { // (Point, Number) -> String
-		
+
 		var map = this._map,
 			crs = map.options.crs,
 			tileSize = this.options.tileSize,
-			
+
 			nwPoint = tilePoint.multiplyBy(tileSize),
 			sePoint = nwPoint.add(new L.Point(tileSize, tileSize)),
 
@@ -64,7 +64,7 @@ L.TileLayer.WMS = L.TileLayer.extend({
 	setParams: function (params, noRedraw) {
 
 		L.Util.extend(this.wmsParams, params);
-		
+
 		if (!noRedraw) {
 			this.redraw();
 		}
@@ -74,5 +74,5 @@ L.TileLayer.WMS = L.TileLayer.extend({
 });
 
 L.tileLayer.wms = function (url, options) {
-	return new L.TileLayer(url, options);
+	return new L.TileLayer.WMS(url, options);
 };
